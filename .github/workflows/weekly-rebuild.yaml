@@ -87,3 +87,20 @@ jobs:
           build-args: |
             UNBOUND_VERSION=${{ steps.unbound.outputs.version }}
             UNBOUND_SHA256=${{ steps.unbound.outputs.sha256 }}
+
+      - name: Update Docker Hub overview
+        # Needs a token with Read, Write & Delete scope; don't fail the publish if it can't.
+        continue-on-error: true
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          jwt=$(jq -n --arg u "$DH_USER" --arg p "$DH_TOKEN" '{username:$u,password:$p}' \
+            | curl -fsS -H 'Content-Type: application/json' -d @- https://hub.docker.com/v2/users/login \
+            | jq -r .token)
+          echo "::add-mask::$jwt"
+          jq -Rs '{full_description: .}' DOCKERHUB.md \
+            | curl -fsS -X PATCH -H "Authorization: JWT $jwt" -H 'Content-Type: application/json' \
+                -d @- "https://hub.docker.com/v2/repositories/${DH_USER}/pihole-unbound/" > /dev/null
+          echo "Docker Hub overview updated"
