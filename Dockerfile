@@ -1,131 +1,86 @@
-# Define an ARG for the base image tag
-ARG BASE_IMG_TAG=none
+# Pi-hole v6 (Alpine) + Unbound, built from source with a verified tarball.
+ARG BASE_IMG_TAG=latest
 
-FROM pihole/pihole:${BASE_IMG_TAG} as openssl
+# ---------------------------------------------------------------- build stage
+FROM pihole/pihole:${BASE_IMG_TAG} AS unbound
 
-WORKDIR /tmp/src
-
-RUN set -e -x && \
-    build_deps="build-essential ca-certificates curl dirmngr gnupg libidn2-0-dev libssl-dev" && \
-    DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
-      $build_deps && \
-    git clone https://github.com/openssl/openssl.git && \
-    cd openssl && \
-    ./config \
-      --prefix=/opt/openssl \
-      --openssldir=/opt/openssl \
-      no-weak-ssl-ciphers \
-      no-ssl3 \
-      no-shared \
-      -DOPENSSL_NO_HEARTBEATS \
-      -fstack-protector-strong && \
-    make depend && \
-    nproc | xargs -I % make -j% && \
-    make install_sw && \
-    apt-get purge -y --auto-remove \
-      $build_deps && \
-    rm -rf \
-        /tmp/* \
-        /var/tmp/* \
-        /var/cache/apt/* \
-        /var/lib/apt/lists/*
-
-
-FROM pihole/pihole:${BASE_IMG_TAG} as unbound
-
-# Define ARG
-ARG UNBOUND_VERSION_CODE=none
-
-ENV NAME=unbound \
-    UNBOUND_VERSION=latest \
-    UNBOUND_DOWNLOAD_URL=https://nlnetlabs.nl/downloads/unbound/unbound-latest.tar.gz
+ARG UNBOUND_VERSION=1.26.2
+ARG UNBOUND_SHA256=d8ee7aa6bbb3ff1be7d9e57637d0d0ec2f18273a8efff1a0afe2c665858b96f7
 
 WORKDIR /tmp/src
 
-COPY --from=openssl /opt/openssl /opt/openssl
-
-RUN build_deps="curl gcc libc-dev libevent-dev libexpat1-dev libnghttp2-dev make flex bison" && \
-    set -x && \
-    DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
-      $build_deps \
-      bsdmainutils \
-      ca-certificates \
-      ldnsutils \
-      libevent-2.1-7 \
-      libexpat1 \
-      libprotobuf-c-dev \
-      protobuf-c-compiler && \
-    curl -sSL $UNBOUND_DOWNLOAD_URL -o unbound.tar.gz && \
-    tar xzf unbound.tar.gz && \
-    rm -f unbound.tar.gz && \
-    mv unbound-* unbound && \
-    cd unbound && \
-    groupadd _unbound && \
-    useradd -g _unbound -s /dev/null -d /etc _unbound && \
+RUN set -eux; \
+    apk add --no-cache \
+      build-base \
+      curl \
+      expat-dev \
+      flex \
+      bison \
+      fstrm-dev \
+      libevent-dev \
+      linux-headers \
+      nghttp2-dev \
+      openssl-dev \
+      protobuf-c-dev; \
+    curl -fsSL "https://nlnetlabs.nl/downloads/unbound/unbound-${UNBOUND_VERSION}.tar.gz" -o unbound.tar.gz; \
+    echo "${UNBOUND_SHA256}  unbound.tar.gz" | sha256sum -c -; \
+    tar xzf unbound.tar.gz; \
+    cd "unbound-${UNBOUND_VERSION}"; \
+    addgroup -S _unbound; \
+    adduser -S -H -h /etc -g _unbound -D -G _unbound _unbound; \
     ./configure \
-        --disable-dependency-tracking \
-        --prefix=/opt/unbound \
-        --with-pthreads \
-        --with-username=_unbound \
-        --with-ssl=/opt/openssl \
-        --with-libevent \
-        --with-libnghttp2 \
-        --enable-dnstap \
-        --enable-tfo-server \
-        --enable-tfo-client \
-        --enable-event-api && \
-    make install && \
-    mv /opt/unbound/etc/unbound/unbound.conf /opt/unbound/etc/unbound/unbound.conf.example && \
-    apt-get purge -y --auto-remove \
-      $build_deps && \
-    rm -rf \
-        /opt/unbound/share/man \
-        /tmp/* \
-        /var/tmp/* \
-        /var/cache/apt/* \
-        /var/lib/apt/lists/*
+      --disable-dependency-tracking \
+      --prefix=/opt/unbound \
+      --with-pthreads \
+      --with-username=_unbound \
+      --with-ssl \
+      --with-libevent \
+      --with-libnghttp2 \
+      --enable-dnstap \
+      --enable-tfo-server \
+      --enable-tfo-client \
+      --enable-event-api \
+      --enable-subnet; \
+    make -j"$(nproc)"; \
+    make install; \
+    mv /opt/unbound/etc/unbound/unbound.conf /opt/unbound/etc/unbound/unbound.conf.example; \
+    rm -rf /opt/unbound/share/man /opt/unbound/include; \
+    mkdir -p /opt/unbound/defaults; \
+    curl -fsSL https://www.internic.net/domain/named.root -o /opt/unbound/defaults/root.hints
 
-
+# --------------------------------------------------------------- final image
 FROM pihole/pihole:${BASE_IMG_TAG}
 
-WORKDIR /tmp/src
-
-COPY --from=unbound /opt /opt
-
-RUN set -x && \
-    DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y --no-install-recommends \
-      bsdmainutils \
+# Runtime libs only; refresh all packages to pick up Alpine security fixes.
+RUN set -eux; \
+    apk upgrade --no-cache; \
+    apk add --no-cache \
       ca-certificates \
-      ldnsutils \
-      libevent-2.1-7 \
-      libnghttp2-14 \
-      libexpat1 \
-      libprotobuf-c1 && \
-    groupadd _unbound && \
-    useradd -g _unbound -s /dev/null -d /etc _unbound && \
-    apt-get purge -y --auto-remove \
-      $build_deps && \
-    rm -rf \
-        /opt/unbound/share/man \
-        /tmp/* \
-        /var/tmp/* \
-        /var/cache/apt/* \
-        /var/lib/apt/lists/*
+      drill \
+      expat \
+      fstrm \
+      libevent \
+      nghttp2-libs \
+      perl \
+      protobuf-c; \
+    addgroup -S _unbound; \
+    adduser -S -H -h /etc -g _unbound -D -G _unbound _unbound
+
+COPY --from=unbound /opt/unbound /opt/unbound
+
+# Default config files shipped in the image (unbound.sh copies any that are missing).
+COPY data/opt/unbound/etc/unbound/ /opt/unbound/defaults/
+COPY lighttpd-external.conf /etc/lighttpd/external.conf
+COPY 99-edns.conf /etc/dnsmasq.d/99-edns.conf
+COPY data/unbound.sh /unbound.sh
+RUN chmod +x /unbound.sh
 
 WORKDIR /opt/unbound/
 
-# copy extra files
-COPY lighttpd-external.conf /etc/lighttpd/external.conf
-COPY 99-edns.conf /etc/dnsmasq.d/99-edns.conf
-COPY data/ /
-RUN chmod +x /unbound.sh
+LABEL maintainer="OrigamiOfficial (community fork)"
 
-# set version label
-LABEL maintainer="OrigamiOfficial"
+ENV FTLCONF_dns_upstreams=127.0.0.1#5335
+ENV PATH=/opt/unbound/sbin:$PATH
 
-# environment settings
-ENV PIHOLE_DNS_ 127.0.0.1#5335
-ENV PATH /opt/unbound/sbin:"$PATH"
-
-# target run
-CMD ["/unbound.sh"]
+# Pi-hole v6's start.sh ignores CMD, so wrap the entrypoint instead.
+ENTRYPOINT ["/unbound.sh"]

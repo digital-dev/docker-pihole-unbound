@@ -424,12 +424,11 @@ config_files=( "a-records.conf" "srv-records.conf" "forward-records.conf" )
 
 # Iterate through each config files
 for file in "${config_files[@]}"; do
-  # Check if the config file exists
+  # Copy the image's bundled default only if the file is missing
+  # (e.g. when /opt/unbound/etc/unbound is a fresh bind mount)
   if [[ ! -f "/opt/unbound/etc/unbound/$file" ]]; then
-    # Download config file only if it's missing
-    url="https://raw.githubusercontent.com/origamiofficial/docker-pihole-unbound/main/data/opt/unbound/etc/unbound/$file"
-    curl -s -o "/opt/unbound/etc/unbound/$file" "$url"
-    echo "Downloaded missing config: $file" >&2
+    cp "/opt/unbound/defaults/$file" "/opt/unbound/etc/unbound/$file"
+    echo "Installed default config: $file" >&2
   fi
 done
 
@@ -437,11 +436,24 @@ mkdir -p /opt/unbound/etc/unbound/dev && \
 cp -a /dev/random /dev/urandom /dev/null /opt/unbound/etc/unbound/dev/
 
 mkdir -p -m 700 /opt/unbound/etc/unbound/var && \
-chown _unbound:_unbound /opt/unbound/etc/unbound/var && \
-/opt/unbound/sbin/unbound-anchor -a /opt/unbound/etc/unbound/var/root.key && \
-curl https://www.internic.net/domain/named.root -q -o /opt/unbound/etc/unbound/var/root.hints
+chown _unbound:_unbound /opt/unbound/etc/unbound/var
+
+# unbound-anchor exits 1 when it (re)installs the key, which is not an error here
+/opt/unbound/sbin/unbound-anchor -a /opt/unbound/etc/unbound/var/root.key || true
+
+# Refresh root hints; fall back to the copy baked into the image
+if curl -fsS --max-time 20 https://www.internic.net/domain/named.root -o /tmp/root.hints; then
+    mv /tmp/root.hints /opt/unbound/etc/unbound/var/root.hints
+else
+    echo "Could not download root.hints, using bundled copy" >&2
+    [ -f /opt/unbound/etc/unbound/var/root.hints ] || cp /opt/unbound/defaults/root.hints /opt/unbound/etc/unbound/var/root.hints
+fi
 
 touch /opt/unbound/etc/unbound/unbound.log && \
 chown _unbound:_unbound /opt/unbound/etc/unbound/unbound.log
 
-exec /opt/unbound/sbin/unbound -d -c /opt/unbound/etc/unbound/unbound.conf
+# Pi-hole v6's start.sh ignores CMD, so start Unbound in the background
+# and then hand PID 1 over to the stock Pi-hole entrypoint.
+/opt/unbound/sbin/unbound -d -c /opt/unbound/etc/unbound/unbound.conf &
+
+exec start.sh
