@@ -1,103 +1,160 @@
-# pihole-unbound 
-![Docker Pulls](https://img.shields.io/docker/pulls/rlabinc/pihole-unbound.svg?style=flat&label=pulls&logo=docker) ![Docker Image Size (tag)](https://img.shields.io/docker/image-size/rlabinc/pihole-unbound/latest?style=flat&logo=docker&label=pihole-unbound) ![Docker Image Size (tag)](https://img.shields.io/docker/image-size/pihole/pihole/latest?style=flat&logo=docker&label=pihole-official) ![GitHub Repo stars](https://img.shields.io/github/stars/origamiofficial/docker-pihole-unbound?style=social) [![Telegram Support](https://img.shields.io/endpoint?label=Support&style=flat&url=https%3A%2F%2Fmogyo.ro%2Fquart-apis%2Ftgmembercount%3Fchat_id%3Dpihole_unbound)](https://t.me/pihole_unbound) ![We Support](https://img.shields.io/badge/we%20stand%20with-%F0%9F%87%B5%F0%9F%87%B8%20palestine-white.svg)
+# pihole-unbound
 
-Level up your network with cutting-edge tech. This Docker container effortlessly combines [Pi-Hole](https://github.com/pi-hole/pi-hole) and [Unbound](https://github.com/NLnetLabs/unbound), giving you the ultimate privacy and performance combo in a single package. It's the future of network management, available today.
+![Docker Pulls](https://img.shields.io/docker/pulls/pestiience/pihole-unbound?style=flat&label=pulls&logo=docker) ![Docker Image Size](https://img.shields.io/docker/image-size/pestiience/pihole-unbound/latest?style=flat&logo=docker&label=image%20size) [![Weekly rebuild](https://img.shields.io/github/actions/workflow/status/digital-dev/docker-pihole-unbound/weekly-rebuild.yaml?style=flat&logo=github&label=weekly%20rebuild)](https://github.com/digital-dev/docker-pihole-unbound/actions/workflows/weekly-rebuild.yaml) ![GitHub Repo stars](https://img.shields.io/github/stars/digital-dev/docker-pihole-unbound?style=flat&logo=github)
 
-![alt text](https://raw.githubusercontent.com/origamiofficial/docker-pihole-unbound/main/banner.png)
+[Pi-hole](https://github.com/pi-hole/pi-hole) v6 and [Unbound](https://github.com/NLnetLabs/unbound) in a single container: network-wide ad blocking plus your own recursive, DNSSEC-validating resolver, so your DNS queries don't go to a third-party upstream.
 
-> [!NOTE]
-> Development for the `development` tag is currently ongoing, there could be some bugs. The `development` tag uses Alpine Linux. If you're familiar with Alpine, we encourage you to check out the [Dockerfile-Dev-V6](https://github.com/origamiofficial/docker-pihole-unbound/blob/main/Dockerfile-Dev-V6) file. Your contributions are highly appreciated!
+This is a community-maintained continuation of [origamiofficial/docker-pihole-unbound](https://github.com/origamiofficial/docker-pihole-unbound), which has been archived.
 
-## Supported Architectures
+![banner](banner.png)
 
-We utilise the docker buildx for multi-platform awareness. More information is available from docker [here](https://docs.docker.com/buildx/working-with-buildx/).
+## What you get
 
-Simply pulling `rlabinc/pihole-unbound:latest` should retrieve the correct image for your arch, but you can also pull specific arch images via `--platform`.
+* Official [`pihole/pihole`](https://hub.docker.com/r/pihole/pihole) **v6** (Alpine Linux) as the base
+* Unbound built from source (checksum-verified) listening on `127.0.0.1:5335`; Pi-hole is pre-configured to use it
+* **Rebuilt every Monday** with the latest Pi-hole and Unbound releases
+* **Vulnerability-gated:** each build is scanned with [Trivy](https://trivy.dev/) and is only published if there are no fixable HIGH/CRITICAL findings
+* Docker Hub image: [`pestiience/pihole-unbound`](https://hub.docker.com/r/pestiience/pihole-unbound)
 
-The architectures supported by this image are:
+## Supported architectures
 
 | Architecture | Available | Platform |
 | :----: | :----: | :----: |
 | amd64 | ✅ | linux/amd64 |
 | arm64 | ✅ | linux/arm64 |
-| armhf | ✅ | linux/arm/v7 |
-| armel | ✅ | linux/arm/v6 |
+| armhf / armel | ❌ | not built |
+
+## Tags
+
+| Tag | Meaning |
+| :----: | :---- |
+| `latest` | Most recent weekly build |
+| `YYYY-MM-DD-unbound-X.Y.Z` | A specific build (date and Unbound version), for pinning or rollback |
+
+> [!WARNING]
+> **Coming from Pi-hole v5 or the original image?** Pi-hole v6 has breaking changes (e.g. `WEBPASSWORD` is now `FTLCONF_webserver_api_password`). Back up your data before upgrading. v5 settings are migrated automatically on first start. See the [Pi-hole v5 to v6 upgrade guide](https://docs.pi-hole.net/docker/upgrading/v5-v6/).
 
 ## Usage
+
 ### Docker run
-Here are the commands you'll need:
+
 ```bash
 docker run -d \
-  --name=pihole-unbound \
-  -e TZ=Europe/London `#optional` \
+  --name pihole-unbound \
   -p 53:53/tcp -p 53:53/udp \
-  -p 80:80/tcp `#Pi-hole web interface port` \
-  -e WEBPASSWORD='qwerty123' `#better to use single quotes` \
-  --restart=always \
-  rlabinc/pihole-unbound:latest
+  -p 80:80/tcp -p 443:443/tcp \
+  -e TZ="America/Chicago" \
+  -e FTLCONF_webserver_api_password="change-me" \
+  -v /opt/pihole-unbound/pihole:/etc/pihole \
+  -v /opt/pihole-unbound/unbound:/opt/unbound/etc/unbound \
+  --restart unless-stopped \
+  pestiience/pihole-unbound:latest
 ```
+
+Web interface: `http://<host-ip>/admin`
+
+Use **separate** host folders for `/etc/pihole` and `/opt/unbound/etc/unbound`. Empty folders are fine: default Unbound files are created on first start and never overwritten afterwards.
 
 ### Docker Compose
 
-To deploy this project using Docker Compose, you can use the following example `docker-compose.yml`:
-
 ```yaml
-version: '3'
-
 services:
   pihole-unbound:
-    image: rlabinc/pihole-unbound:latest
+    image: pestiience/pihole-unbound:latest
     container_name: pihole-unbound
-    environment:
-      - TZ=Europe/London # Adjust timezone as needed
-      - WEBPASSWORD=qwerty123 # Set a secure password
     ports:
       - "53:53/tcp"
       - "53:53/udp"
-      - "80:80/tcp" #Pi-hole web interface port
-    restart: always
+      - "80:80/tcp"
+      - "443:443/tcp"
+    environment:
+      TZ: "America/Chicago"
+      FTLCONF_webserver_api_password: "change-me"
+    volumes:
+      - ./pihole:/etc/pihole
+      - ./unbound:/opt/unbound/etc/unbound
+    restart: unless-stopped
 ```
 
-This example configuration will run Pi-hole with Unbound, listening on port 53 for DNS queries and port 80 for the web interface.
-Make sure to adjust the environment variables, password, and timezone according to your setup.
-
-To start the container, use:
 ```bash
-docker-compose up -d
+docker compose up -d     # start
+docker compose down      # stop
+docker compose pull && docker compose up -d   # update
 ```
 
-To stop the container, use:
+Add `cap_add: [NET_ADMIN]` if you use Pi-hole as a DHCP server.
+
+### Unraid
+
+In the Docker tab, add or edit the container, switch to **Advanced View**, and set:
+
+| Setting | Value |
+| :---- | :---- |
+| Repository | `pestiience/pihole-unbound:latest` |
+| Network Type | Custom (e.g. `br0`) with a fixed IP, or Bridge with port mappings |
+| Variable `TZ` | Your timezone, e.g. `America/Chicago` |
+| Variable `FTLCONF_webserver_api_password` | Web interface password (not `WEBPASSWORD`, which v6 ignores) |
+| Path: container `/etc/pihole` | `/mnt/user/appdata/pihole-unbound/pihole` |
+| Path: container `/opt/unbound/etc/unbound` | `/mnt/user/appdata/pihole-unbound/unbound` |
+| Ports (Bridge mode only) | 53 TCP, 53 UDP, 80 TCP, 443 TCP |
+
+Back up your appdata folder before switching from a v5 image. Unraid's *Check for updates* picks up the weekly rebuilds.
+
+### Verify it works
+
 ```bash
-docker-compose down
+# Unbound directly: should return NOERROR
+docker exec pihole-unbound drill -p 5335 example.com @127.0.0.1
+# DNSSEC validation: should return SERVFAIL
+docker exec pihole-unbound drill -p 5335 dnssec-failed.org @127.0.0.1
 ```
 
-> [!TIP]
-> Mikrotik users: Facing `cp: cannot create special file`, the solution was letting RouterOS create the mounted volume itself, and not manually creating a "directory" beforehand. As result, the mount appears as "container store" (so not a "directory"), accessible via SFTP (and not via Winbox/WebFig) for pushing custom Unbound config. - [@riccardo1991](https://github.com/origamiofficial/docker-pihole-unbound/issues/30#issuecomment-2526363715)
+Then point your router's DHCP DNS (or individual devices) at the container's IP.
 
-### Docker Tags
-The Docker tags supported by this image are:
+## Parameters
 
-| Tag | Type | Status | Development | Description |
-| :-----: | :-----: | :-----: | :-----: | :-----: |
-| `latest` | Stable | [![latest Build](https://img.shields.io/github/actions/workflow/status/origamiofficial/docker-pihole-unbound/build-and-push-latest.yaml)](https://github.com/origamiofficial/docker-pihole-unbound/actions/workflows/build-and-push-latest.yaml) | ✅ | Always latest release |
-| `2024.02.2-1.19.3` | Stable | [![date Build](https://img.shields.io/github/actions/workflow/status/origamiofficial/docker-pihole-unbound/build-and-push-latest.yaml)](https://github.com/origamiofficial/docker-pihole-unbound/actions/workflows/build-and-push-latest.yaml) | ✅ | Date-based release [Pi-hole Version-Unbound Version] |
-| `dev` | Beta | [![dev Build](https://img.shields.io/github/actions/workflow/status/origamiofficial/docker-pihole-unbound/build-and-push-dev.yaml)](https://github.com/origamiofficial/docker-pihole-unbound/actions/workflows/build-and-push-dev.yaml) | ❌ | [DEPRECATED] Similar to `latest`, but for the development branch (pushed occasionally) |
-| `development` | Beta | [![development-v6 Build](https://img.shields.io/github/actions/workflow/status/origamiofficial/docker-pihole-unbound/build-and-push-dev-v6.yaml)](https://github.com/origamiofficial/docker-pihole-unbound/actions/workflows/build-and-push-dev-v6.yaml) | ✅ | Upcoming Alpine based v6 release |
-| `test` | Test | ❌ | 🔬 | Testing purpose only |
+| Parameter | Function |
+| :---- | :---- |
+| `-e TZ=America/Chicago` | Timezone |
+| `-e FTLCONF_webserver_api_password=...` | Pi-hole web interface password |
+| `-e FTLCONF_dns_upstreams=...` | Defaults to `127.0.0.1#5335` (the built-in Unbound). Changing it bypasses Unbound |
+| `-p 53:53/tcp -p 53:53/udp` | DNS |
+| `-p 80:80/tcp -p 443:443/tcp` | Pi-hole web interface |
+| `-v <dir>:/etc/pihole` | Pi-hole data (settings, gravity database) |
+| `-v <dir>:/opt/unbound/etc/unbound` | Unbound configuration |
+| `--restart unless-stopped` | Keeps DNS up across reboots |
 
-> [!NOTE]
-> The `development` has been entirely redesigned from the ground up and contains many [breaking changes](https://github.com/pi-hole/docker-pi-hole/blob/development-v6/README.md), for more info regarding `development` visit [here](https://pi-hole.net/blog/2023/10/09/pi-hole-v6-beta-testing/).
+All [Pi-hole v6 environment variables](https://docs.pi-hole.net/docker/configuration/) (`FTLCONF_*`) are supported.
 
-### Installing on Ubuntu
-Modern releases of Ubuntu (17.10+) include [`systemd-resolved`](http://manpages.ubuntu.com/manpages/bionic/man8/systemd-resolved.service.8.html) which is configured by default to implement a caching DNS stub resolver. This will prevent pi-hole from listening on port 53.
-The stub resolver should be disabled with: `sudo sed -r -i.orig 's/#?DNSStubListener=yes/DNSStubListener=no/g' /etc/systemd/resolved.conf`
+Files in the Unbound folder:
 
-This will not change the nameserver settings, which point to the stub resolver thus preventing DNS resolution. Change the `/etc/resolv.conf` symlink to point to `/run/systemd/resolve/resolv.conf`, which is automatically updated to follow the system's [`netplan`](https://netplan.io/):
-`sudo sh -c 'rm /etc/resolv.conf && ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf'`
-After making these changes, you should restart systemd-resolved using `systemctl restart systemd-resolved`
+* `unbound.conf`: main config, generated on first start (delete it to regenerate)
+* `a-records.conf`: local DNS records
+* `srv-records.conf`: local SRV records
+* `forward-records.conf`: optional DNS-over-TLS forwarding; uncomment its `include:` line in `unbound.conf` to use it
 
-Once pi-hole is installed, you'll want to configure your clients to use it ([see here](https://discourse.pi-hole.net/t/how-do-i-configure-my-devices-to-use-pi-hole-as-their-dns-server/245)). If you used the symlink above, your docker host will either use whatever is served by DHCP, or whatever static setting you've configured. If you want to explicitly set your docker host's nameservers you can edit the netplan(s) found at `/etc/netplan`, then run `sudo netplan apply`.
-Example netplan:
+## Building it yourself
+
+```bash
+docker build -t pihole-unbound .
+```
+
+Optional build arguments: `BASE_IMG_TAG` (Pi-hole tag), `UNBOUND_VERSION` and `UNBOUND_SHA256` (checksum from `https://nlnetlabs.nl/downloads/unbound/unbound-<version>.tar.gz.sha256`).
+
+To publish your own copy from GitHub Actions, fork this repository and add the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with Read, Write & Delete scope). [`weekly-rebuild.yaml`](.github/workflows/weekly-rebuild.yaml) does the rest: it resolves the latest Unbound, builds, scans, pushes and updates the Docker Hub overview.
+
+## Installing on Ubuntu
+
+Modern Ubuntu releases include [`systemd-resolved`](http://manpages.ubuntu.com/manpages/bionic/man8/systemd-resolved.service.8.html), whose stub resolver listens on port 53 and stops Pi-hole from binding it. Disable the stub listener:
+
+```bash
+sudo sed -r -i.orig 's/#?DNSStubListener=yes/DNSStubListener=no/g' /etc/systemd/resolved.conf
+sudo sh -c 'rm /etc/resolv.conf && ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf'
+sudo systemctl restart systemd-resolved
+```
+
+Then configure your clients to use Pi-hole ([guide](https://discourse.pi-hole.net/t/how-do-i-configure-my-devices-to-use-pi-hole-as-their-dns-server/245)). To set the host's own nameserver explicitly, edit the netplan file in `/etc/netplan` and run `sudo netplan apply`:
+
 ```yaml
 network:
     ethernets:
@@ -110,44 +167,25 @@ network:
     version: 2
 ```
 
-Note that it is also possible to disable `systemd-resolved` entirely. However, this can cause problems with name resolution in vpns ([see bug report](https://bugs.launchpad.net/network-manager/+bug/1624317)). It also disables the functionality of netplan since systemd-resolved is used as the default renderer ([see `man netplan`](http://manpages.ubuntu.com/manpages/bionic/man5/netplan.5.html#description)). If you choose to disable the service, you will need to manually set the nameservers, for example by creating a new `/etc/resolv.conf`.
+## Links
 
-Users of older Ubuntu releases (circa 17.04) will need to disable dnsmasq.
-
-## Parameters
-
-Container images are configured using parameters passed at runtime (such as those above).
-
-| Parameter | Function | `development-v6` Only |
-| :----: | :----: | :----: |
-| `-e TZ=Europe/London` | Specify a timezone to use ex Europe/London. | `-e TZ=Europe/London` |
-| `-p 53:53/tcp -p 53:53/udp` | Default DNS port to use. | `-p 53:53/tcp -p 53:53/udp` |
-| `-p 80:80/tcp` | Specify Pi-hole web interface port. | `-p 80:80/tcp` |
-| `-e WEBPASSWORD='qwerty123'` | Specify Pi-hole web interface password. It is better to use single quotes. | `-e FTLCONF_webserver_api_password='qwerty123'` |
-| `--restart=always` | To make sure "It's Always DNS" does not happen. | `--restart=always` |
-| `-v /opt/unbound/etc/unbound` | Your customized Unbound configuration `unbound.conf` location. | `-v /opt/unbound/etc/unbound` |
-
-This Docker container supports all Pi-hole official Docker container environment variables available [here](https://github.com/pi-hole/docker-pi-hole/#environment-variables).
-
-## Quick Links
-* [Telegram Support](https://t.me/pihole_unbound)
-* [Pihole Docker Github Repository](https://github.com/pi-hole/docker-pi-hole)
-* [Unbound Github Repository](https://github.com/NLnetLabs/unbound)
-* [Pi-hole Unbound Github Repository](https://github.com/origamiofficial/docker-pihole-unbound)
-* [Pi-hole Unbound Docker Hub](https://hub.docker.com/r/rlabinc/pihole-unbound)
+* [Pi-hole Docker documentation](https://docs.pi-hole.net/docker/)
+* [Pi-hole](https://github.com/pi-hole/pi-hole) and [docker-pi-hole](https://github.com/pi-hole/docker-pi-hole)
+* [Unbound](https://github.com/NLnetLabs/unbound)
+* [Docker Hub: pestiience/pihole-unbound](https://hub.docker.com/r/pestiience/pihole-unbound)
 
 ## Acknowledgements
-The code in this image is heavily influenced by MatthewVance's unbound-docker with the help of chriscrowe's docker-pihole-unbound server Docker image configs,
-However, the upstream projects most certainly also deserve credit for making this all possible.
-- [pi-hole](https://github.com/pi-hole).
-- [NLnetLabs](https://github.com/NLnetLabs).
-- [MatthewVance](https://github.com/MatthewVance).
-- [chriscrowe](https://github.com/chriscrowe).
-- [madnuttah](https://github.com/madnuttah).
-- The many other devs who got me inspired!
 
-## Warning
+Originally created by [OrigamiOfficial](https://github.com/origamiofficial/docker-pihole-unbound) (MIT license), influenced by MatthewVance's unbound-docker and chriscrowe's docker-pihole-unbound. Thanks to:
 
-I'm not responsible if your internet goes down using this Docker container. Use at your own risk.
+* [pi-hole](https://github.com/pi-hole)
+* [NLnetLabs](https://github.com/NLnetLabs)
+* [MatthewVance](https://github.com/MatthewVance)
+* [chriscrowe](https://github.com/chriscrowe)
+* [madnuttah](https://github.com/madnuttah)
 
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https://github.com/origamiofficial/docker-pihole-unbound&icon=github.svg&icon_color=%23FFFFFF&title=hits&edge_flat=false)](https://github.com/origamiofficial/docker-pihole-unbound)
+Pi-hole is a trademark of Pi-hole LLC. This is an unofficial community image.
+
+## Disclaimer
+
+Use at your own risk. If your DNS goes down, so does your internet; keep a fallback resolver handy.
